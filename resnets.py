@@ -98,12 +98,12 @@ def conv_block3v1(X,f,filters,s=2):
     X_init = X
 
     X = Conv2D(f1,(1,1),strides=(s,s),padding='valid')(X)
-    X = BatchNormlaization()(X)
+    X = BatchNormalization()(X)
     X = Activation('relu')(X)
 
     X = Conv2D(f2,(f,f),strides=(1,1),padding='same')(X)
     X = BatchNormalization()(X)
-    X = Acivation ('relu')(X)
+    X = Activation ('relu')(X)
 
     X = Conv2D(f3,(1,1),strides=(1,1),padding='valid')(X)
     X = BatchNormalization()(X)
