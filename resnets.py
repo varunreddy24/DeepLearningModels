@@ -115,6 +115,29 @@ def conv_block3v1(X,f,filters,s=2):
     X = Activation('relu')(X)
     return X
 
+def residual_blockv1(x,filters,kernel_size=3,stride=1,conv_short = True):
+    if conv_short:
+        shortcut = Conv2D(4*filters,(1,1),strides=stride)(x)
+        shortcut = BatchNormalization()(shortcut)
+    else:
+        shortcut = MaxPooling2D((1,1),strides=2)
+
+    x = Conv2D(filters,(1,1),strides=stride)(x)
+    x = BatchNormalization()(x)
+    x = Activation('relu')(x)
+    
+    x = Conv2D(filters,(3,3),padding='same')(x)
+    x = BatchNormalization(x)
+    x = Activation('relu')(x)
+
+    x = Conv2D(4*filters,(1,1))(x)
+    x = BatchNormalization(x)
+    
+    x = Add()([x,shortcut])
+    x = Activation('relu')(x) 
+
+
+
 def identity_block3v2(X, f, filters):
     f1,f2,f3 = filters
     X_init = X
