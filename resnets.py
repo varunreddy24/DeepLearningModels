@@ -1,508 +1,235 @@
 import tensorflow as tf
 import tensorflow.keras as keras
-from tensorflow.keras.layers import Conv2D, Activation, Dropout, Dense, Input, MaxPooling2D
+from tensorflow.keras.layers import Conv2D, Activation, Dense, Input, MaxPooling2D
 from tensorflow.keras.layers import MaxPooling2D, Add, ZeroPadding2D, BatchNormalization
-from tensorflow.keras.layers import AveragePooling2D, ZeroPadding2D, Flatten
+from tensorflow.keras.layers import ZeroPadding2D,GlobalAveragePooling2D
 from tensorflow.keras.models import Model
 
-def identity_block2v1(X,f,filters):
-    f1,f2 = filters
-    X_init = X
 
-    X = Conv2D(f1,(3,3),strides=(1,1),padding='same')(X)
-    X = BatchNormalization()(X)
-    X = Activation('relu')(X)
+def residual_block2v1(x,filters,stride=1,conv_shortcut=True):
+    if conv_shortcut:
+        shortcut = Conv2D(filters,1,strides=stride)(x)
+    else:
+        shortcut = x
 
-    X = Conv2D(f1,(3,3),strides=(1,1),padding='same')(X)
-    X = BatchNormalization()(X)
-    X = Activation('relu')(X)
+    x = ZeroPadding2D(padding=((1,1),(1,1)))(x)
+    x = Conv2D(filters,3,strides=stride)(x)
+    x = BatchNormalization()(x)
+    x = Activation('relu')(x)
 
-    X = Add()([X,X_init])
-    X = Activation('relu')(X)
-    return X
+    x = ZeroPadding2D(padding=((1,1),(1,1)))(x)
+    x = Conv2D(filters,3)(x)
+    x = BatchNormalization()(x)
 
-def identity_block2v2(X,f,filters):
-    f1,f2 = filters
-    X_init = X
+    x = Add()([x,shortcut])
+    x = Activation('relu')(x)
+    return x
 
-    X = BatchNormalization()(X)
-    X = Activation('relu')(X)
-    X = Conv2D(f1,(3,3),strides=(1,1),padding='same')(X)
-    
-    X = BatchNormalization()(X)
-    X = Activation('relu')(X)
-    X = Conv2D(f1,(3,3),strides=(1,1),padding='same')(X)
+def stack21(x,filters,blocks,stride=2):
+    x = residual_block2v1(x,filters,stride)
+    for i in range(blocks-1):
+        x = residual_block2v1(x,filters,conv_shortcut=False)
+    return x
 
-    X = Add()([X,X_init])
-    return X
+def residual_block2v2(x,filters,kernel_size=3,stride=1,conv_shortcut=True):
+    preact = BatchNormalization()(x)
+    preact = Activation('relu')(x)
 
-def conv_block2v1(X,f,filters,s=2):
-    f1,f2 = filters
-    X_init = X
+    if conv_shortcut:
+        shortcut = Conv2D(filters,1,strides=stride)(preact)
+    else:
+        print("this")
+        shortcut = MaxPooling2D(3,strides=stride)(x) if stride>1 else x
 
-    X = Conv2D(f1,(3,3),strides=(s,s),padding='same')(X)
-    X = BatchNormalization()(X)
-    X = Activation('relu')(X)
+    x = ZeroPadding2D(padding=((1,1),(1,1)))(preact)
+    x = Conv2D(filters,3,strides=stride)(x)
 
-    X = Conv2D(f2,(3,3),strides=(1,1),padding='same')(X)
-    X = BatchNormalization()(X)
-    X = Activation('relu')(X)
+    x = BatchNormalization()(x)
+    x = Activation('relu')(x)
+    x = ZeroPadding2D(padding=((1,1),(1,1)))(x)
+    x = Conv2D(filters,3)(x)
 
-    X_init = Conv2D(f1,(3,3),strides=(s,s),padding='same')(X_init)
-    X_init = BatchNormalization()(X_init)
+    print(x.shape)
+    print(shortcut.shape)
+    x = Add()([x,shortcut])
+    return x
 
-    X = Add()([X,X_init])
-    X = Activation('relu')(X)
-    return X
+def stack22(x,filters,blocks,stride=2):
+    x = residual_block2v2(x,filters,conv_shortcut=True)
+    for i in range(blocks-2):
+        x = residual_block2v2(x,filters)
+    x = residual_block2v2(x,filters,stride=stride)
+    return x
 
-def conv_block2v2(X,f,filters,s=2):
-    f1,f2 = filters
-    X_init = X
-
-    X = BatchNormalization()(X)
-    X = Activation('relu')(X)
-    X = Conv2D(f1,(3,3),strides=(s,s),padding='same')(X)
-
-    X = BatchNormalization()(X)
-    X = Activation('relu')(X)
-    X = Conv2D(f2,(3,3),strides=(1,1),padding='same')(X)
-
-    X_init = BatchNormalization()(X_init)
-    X_init = Conv2D(f1,(3,3),strides=(s,s),padding='same')(X_init)
-    
-
-    X = Add()([X,X_init])
-    return X
-
-def identity_block3v1(X, f, filters):
-    f1,f2,f3 = filters
-    X_init = X
-
-    X = Conv2D(f1,(1,1),strides=(1,1),padding='valid')(X)
-    X = BatchNormalization()(X)
-    X = Activation('relu')(X)
-
-    X = Conv2D(f2,(f,f),strides=(1,1),padding='same')(X)
-    X = BatchNormalization()(X)
-    X = Activation('relu')(X)
-
-    X = Conv2D(f3,(1,1),strides=(1,1),padding='valid')(X)
-    X = BatchNormalization()(X)
-
-    X = Add()[X,X_init]
-    X = Activation('relu')
-    return X
-
-def conv_block3v1(X,f,filters,s=2):
-    f1,f2,f3 = filters
-    X_init = X
-
-    X = Conv2D(f1,(1,1),strides=(s,s),padding='valid')(X)
-    X = BatchNormalization()(X)
-    X = Activation('relu')(X)
-
-    X = Conv2D(f2,(f,f),strides=(1,1),padding='same')(X)
-    X = BatchNormalization()(X)
-    X = Activation ('relu')(X)
-
-    X = Conv2D(f3,(1,1),strides=(1,1),padding='valid')(X)
-    X = BatchNormalization()(X)
-
-    X_init = Conv2D(f3,(1,1),strides=(s,s),padding='valid')(X_init)
-    X_init = BatchNormalization()(X_init)
-
-    X = Add()([X,X_init])
-    X = Activation('relu')(X)
-    return X
-
-def residual_blockv1(x,filters,kernel_size=3,stride=1,conv_short = True):
-    if conv_short:
-        shortcut = Conv2D(4*filters,(1,1),strides=stride)(x)
+def residual_block3v1(x,filters,kernel_size=3,stride=1,conv_shortcut = True):
+    if conv_shortcut:
+        shortcut = Conv2D(4*filters,1,strides=stride)(x)
         shortcut = BatchNormalization()(shortcut)
     else:
-        shortcut = MaxPooling2D((1,1),strides=2)
+        shortcut = x
 
-    x = Conv2D(filters,(1,1),strides=stride)(x)
+    x = Conv2D(filters,1,strides=stride)(x)
     x = BatchNormalization()(x)
     x = Activation('relu')(x)
     
-    x = Conv2D(filters,(3,3),padding='same')(x)
-    x = BatchNormalization(x)
+    x = Conv2D(filters,kernel_size,padding='same')(x)
+    x = BatchNormalization()(x)
     x = Activation('relu')(x)
-
+    
     x = Conv2D(4*filters,(1,1))(x)
-    x = BatchNormalization(x)
+    x = BatchNormalization()(x)
     
     x = Add()([x,shortcut])
     x = Activation('relu')(x) 
+    return x
 
+def stack31(x,filters,blocks,stride=2):
+    x = residual_block3v1(x,filters,3,stride)
+    for i in range(blocks-1):
+        x = residual_block3v1(x,filters,conv_shortcut=False)
+    return x
 
+def residual_block3v2(x,filters,kernel_size=3,stride=1,conv_shortcut=False):
+    preact = BatchNormalization()(x)
+    preact = Activation('relu')(preact)
 
-def identity_block3v2(X, f, filters):
-    f1,f2,f3 = filters
-    X_init = X
-
-    X = BatchNormalization()(X)
-    X = Activation('relu')(X)
-    X = Conv2D(f1,(1,1),strides=(1,1),padding='valid')(X)
-
-    X = BatchNormalization()(X)
-    X = Activation('relu')(X)
-    X = Conv2D(f2,(f,f),strides=(1,1),padding='same')(X)
-
-    X = BatchNormalization()(X)
-    X = Activation('relu')(X)
-    X = Conv2D(f3,(1,1),strides=(1,1),padding='valid')(X)
-
-    X = Add()[X,X_init]
-    return X
-
-def conv_block3v2(X,f,filters,s=2):
-    f1,f2,f3 = filters
-    X_init = X
-
-    X = BatchNormlaization()(X)
-    X = Activation('relu')(X)
-    X = Conv2D(f1,(1,1),strides=(s,s),padding='valid')(X_init)
-
-    X = BatchNormlaization()(X)
-    X = Activation('relu')(X)
-    X = Conv2D(f2,(f,f),strides=(1,1),padding='same')(X)
-
-    X = BatchNormlaization()(X)
-    X = Activation('relu')(X)
-    X = Conv2D(f3,(1,1),strides=(1,1),padding='valid')(X)
-
-    X_init = BatchNormlaization()(X_init)
-    X_init = Conv2D(f3,(1,1),strides=(s,s),padding='valid')(X_init)
-
-    X = Add()([X,X_init])
-    return X
-
-def resnet18v1(input_shape,classes):
-    X_input = Input(shape=input_shape)
-
-    X = ZeroPadding2D((3,3))(X_input)
-    X = Conv2D(64,(7,7),strides=(2,2))(X)
-    X = BatchNormalization()(X)
-    X = Activation('relu')(X)
-    X = MaxPooling2D((3,3),strides=(2,2))(X)
-
-    X = identity_block2v1(X,3,[64,64])
-    X = identity_block2v1(X,3,[64,64])
-    X = Dropout(0.2)(X)
-
-    X = conv_block2v1(X,3,[128,128],s=2)
-    X = identity_block2v1(X,3,[128,128])
-    X = Dropout(0.2)(X)
-
-    X = conv_block2v1(X,3,[256,256],s=2)
-    X = identity_block2v1(X,3,[256,256])
-    X = Dropout(0.2)(X)
-
-    X = conv_block2v1(X,3,[512,512],s=2)
-    X = identity_block2v1(X,3,[512,512])
-    X = Dropout(0.2)(X)
+    if conv_shortcut:
+        shortcut = Conv2D(4*filters,1,strides=stride)(preact)
+    else:
+        shortcut = MaxPooling2D(1,strides=stride)(x) if stride>1 else x
     
-    X = AveragePooling2D((2,2),strides=(1,1))(X)
-    X = Flatten()(X)
-    X = Dense(classes,activation='softmax')(X)
+    x = Conv2D(filters,1,strides=1)(preact)
 
-    model = Model(inputs=X_input,outputs=X,name='ResNet18v1')
+    x = BatchNormalization()(x)
+    x = Activation('relu')(x)
+    x = ZeroPadding2D(padding=((1,1),(1,1)))(x)
+    x = Conv2D(filters,kernel_size,stride)(x)
 
+    x = BatchNormalization()(x)
+    x = Activation('relu')(x)
+    x = Conv2D(4*filters,1)(x)
+    
+    x = Add()([x,shortcut])
+    return x
+
+def stack32(x,filters,blocks,stride=2):
+    x = residual_block3v2(x,filters,conv_shortcut=True)
+    for i in range(blocks-2):
+        x = residual_block3v2(x,filters)
+    x = residual_block3v2(x,filters,stride=stride)
+    return x
+
+def resnet(stack_fn,input_shape,model_name,classes=10,preact=False,include_top=True):
+    img_input = Input(shape=(input_shape))
+    x = ZeroPadding2D(((3,3), (3,3)))(img_input)
+    x = Conv2D(64,7,strides=2)(x)
+
+    if not preact:
+        x = BatchNormalization()(x)
+        x = Activation('relu')(x)
+    
+    x = ZeroPadding2D(padding=((1, 1), (1, 1)))(x)
+    x = MaxPooling2D(3,strides=2)(x)
+
+    x = stack_fn(x)
+
+    if preact:
+        x = BatchNormalization()(x)
+        x = Activation('relu')(x)
+
+    if include_top:
+        x = GlobalAveragePooling2D()(x)
+        x = Dense(classes,activation='sigmoid')(x)
+
+    model = Model(img_input,x,name=model_name)
     return model
 
-def resnet18v2(input_shape,classes):
-    X_input = Input(shape=input_shape)
-
-    X = ZeroPadding2D((3,3))(X_input)
-    X = Conv2D(64,(7,7),strides=(2,2))(X)
-    X = BatchNormalization()(X)
-    X = Activation('relu')(X)
-    X = MaxPooling2D((3,3),strides=(2,2))(X)
-
-    X = identity_block2v2(X,3,[64,64],s=1)
-    X = identity_block2v2(X,3,[64,64])
-    X = Dropout(0.4)(X)
-
-    X = conv_block2v2(X,3,[128,128],s=2)
-    X = identity_block2v2(X,3,[128,128])
-    X = Dropout(0.4)(X)
-
-    X = conv_block2v2(X,3,[256,256],s=2)
-    X = identity_block2v2(X,3,[256,256])
-    X = Dropout(0.4)(X)
-
-    X = conv_block2v2(X,3,[512,512],s=2)
-    X = identity_block2v2(X,3,[512,512])
-    X = Dropout(0.4)(X)
+def ResNet18v1(input_shape,include_top=True,classes=10):
+    def stack_fn(x):
+        x = stack21(x,64,2,stride=1)
+        x = stack21(x,128,2,stride=2)
+        x = stack21(x,256,2,stride=2)
+        return stack21(x,512,2,stride=2)
     
-    X = AveragePooling2D((2,2),strides=(1,1))(X)
-    X = Flatten()(X)
-    X = Dense(classes,activation='softmax')(X)
+    return resnet(stack_fn,input_shape,'ResNet18',classes,include_top=include_top)
 
-    model = Model(inputs=X_input,outputs=X,name='ResNet18v2')
-
-    return model
-
-def resnet34v1(input_shape,classes):
-    X_input = Input(shape=input_shape)
-
-    X = ZeroPadding2D((3,3))(X_input)
-    X = Conv2D(64,(7,7),strides=(2,2))(X)
-    X = BatchNormalization()(X)
-    X = Activation('relu')(X)
-    X = MaxPooling2D((3,3),strides=(2,2))(X)
-
-    for i in range(3):
-        X = identity_block2v1(X,3,[64,64])
+def ResNet18v2(input_shape,include_top=True,classes=10):
+    def stack_fn(x):
+        x = stack22(x,64,2,stride=2)
+        x = stack22(x,128,2,stride=2)
+        x = stack22(x,256,2,stride=2)
+        return stack22(x,512,2,stride=1)
     
-    X = conv_block2v1(X,3,[128,128],s=2)
-    for i in range(3):
-        X = identity_block2v1(X,3,[128,128])
+    return resnet(stack_fn,input_shape,'ResNet18v2',classes,True,include_top)
 
-    X = conv_block2v1(X,3,[256,256],s=2)
-    for i in range(5):
-        X = identity_block2v1(X,3,[256,256])
-
-    X = conv_block2v1(X,3,[512,512],s=2)
-    for i in range(2):
-        X = identity_block2v1(X,3,[512,512])
+def ResNet34v1(input_shape,include_top=True,classes=10):
+    def stack_fn(x):
+        x = stack21(x,64,3,stride=1)
+        x = stack21(x,128,4,stride=2)
+        x = stack21(x,256,6,stride=2)
+        return stack21(x,512,3,stride=2)
     
-    X = AveragePooling2D((2,2),strides=(1,1))(X)
-    X = Flatten()(X)
-    X = Dense(classes,activation='softmax')(X)
+    return resnet(stack_fn,input_shape,'ResNet34',classes,include_top=include_top)
 
-    model = Model(inputs=X_input,outputs=X,name='ResNet34v1')
-
-    return model
-
-def resnet34v2(input_shape,classes):
-    X_input = Input(shape=input_shape)
-
-    X = ZeroPadding2D((3,3))(X_input)
-    X = Conv2D(64,(7,7),strides=(2,2))(X)
-    X = BatchNormalization()(X)
-    X = Activation('relu')(X)
-    X = MaxPooling2D((3,3),strides=(2,2))(X)
-
-    for i in range(3):
-        X = identity_block2v2(X,3,[64,64])
+def ResNet34v2(input_shape,include_top=True,classes=10):
+    def stack_fn(x):
+        x = stack22(x,64,3,stride=2)
+        x = stack22(x,128,4,stride=2)
+        x = stack22(x,256,6,stride=2)
+        return stack22(x,512,3,stride=1)
     
-    X = conv_block2v2(X,3,[128,128],s=2)
-    for i in range(3):
-        X = identity_block2v2(X,3,[128,128])
+    return resnet(stack_fn,input_shape,'ResNet34v2',classes,True,include_top)
 
-    X = conv_block2v2(X,3,[256,256],s=2)
-    for i in range(5):
-        X = identity_block2v2(X,3,[256,256])
+def ResNet50v1(input_shape,include_top = True,classes=10):
+    def stack_fn(x):
+        x = stack31(x,64,3,stride=1)
+        x = stack31(x,128,4,stride=2)
+        x = stack31(x,256,6,stride=2)
+        return stack31(x,512,3,stride=2)
 
-    X = conv_block2v2(X,3,[512,512],s=2)
-    for i in range(2):
-        X = identity_block2v2(X,3,[512,512])
+    return resnet(stack_fn,input_shape,'ResNet50',classes,include_top=include_top)
+
+def ResNet50v2(input_shape,include_top = True,classes=10):
+    def stack_fn(x):
+        x = stack32(x,64,3,stride=2)
+        x = stack32(x,128,4,stride=2)
+        x = stack32(x,256,6,stride=2)
+        return stack32(x,512,3,stride=1)
+
+    return resnet(stack_fn,input_shape,'ResNet50v2',classes,include_top=include_top,preact=True)
+
+def ResNet101v1(input_shape,include_top=True,classes=10):
+    def stack_fn(x):
+        x = stack31(x,64,3,stride=1)
+        x = stack31(x,128,4,stride=2)
+        x = stack31(x,256,23,stride=2)
+        return stack31(x,512,3,stride=2)
     
-    X = AveragePooling2D((2,2),strides=(1,1))(X)
-    X = Flatten()(X)
-    X = Dense(classes,activation='softmax')(X)
+    return resnet(stack_fn,input_shape,'ResNet101',classes,include_top=include_top)
 
-    model = Model(inputs=X_input,outputs=X,name='ResNet34v2')
-
-    return model
-
-def resnet50v1(input_shape,classes):
-    X_input = Input(shape=input_shape)
-
-    X = ZeroPadding2D((3,3))(X_input)
-    X = Conv2D(64,(7,7),strides=(2,2))(X)
-    X = BatchNormalization()(X)
-    X = Activation('relu')(X)
-    X = MaxPooling2D((3,3),strides=(2,2))(X)
-
-    X = conv_block3v1(X,3,[64,64,256],s=1)
-    for i in range(2):
-    X = identity_block3v1(X,3,[64,64,256])
-
-    X = conv_block3v1(X,3,[128,128,512],s=2)
-    for i in range(3):
-        X = identity_block3v1(X,3,[128,128,512])
+def ResNet101V2(input_shape,include_top=True,classes=10):
+    def stack_fn(x):
+        x = stack32(x,64,3,stride=2)
+        x = stack32(x,128,3,stride=2)
+        x = stack32(x,256,23,stride=2)
+        return stack31(x,512,3,stride=1)
     
-    X = conv_block3v1(X,3,[256,256,1024],s=2)
-    for i in range(5):
-        X = identity_block3v1(X,3,[256,256,1024])
+    return resnet(stack_fn,input_shape,'ResNet101v2',classes,include_top,preact=True)
+
+def ResNet152v1(input_shape,include_top=True,classes=10):
+    def stack_fn(x):
+        x = stack31(x,64,3,stride=1)
+        x = stack31(x,128,8,stride=2)
+        x = stack31(x,256,36,stride=2)
+        return stack31(x,512,3,stride=2)
     
-    X = conv_block3v1(X,3,[512,512,2048],s=2)
-    for i in range(2):
-        X = identity_block3v1(X,3,[512,512,2048])
+    return resnet(stack_fn,input_shape,'ResNet152',classes,include_top=include_top)
+
+def ResNet152V2(input_shape,include_top=True,classes=10):
+    def stack_fn(x):
+        x = stack32(x,64,3,stride=2)
+        x = stack32(x,128,8,stride=2)
+        x = stack32(x,256,36,stride=2)
+        return stack31(x,512,3,stride=1)
     
-    X = AveragePooling2D((2,2),strides=(1,1))(X)
-    X = Flatten()(X)
-    X = Dense(classes,activation='softmax')(X)
-
-    model = Model(inputs=X_input,outputs=X,name='ResNet50v1')
-
-    return model
-
-def resnet50v2(input_shape,classes):
-    X_input = Input(shape=input_shape)
-
-    X = ZeroPadding2D((3,3))(X_input)
-    X = Conv2D(64,(7,7),strides=(2,2))(X)
-    X = BatchNormalization()(X)
-    X = Activation('relu')(X)
-    X = MaxPooling2D((3,3),strides=(2,2))(X)
-
-    X = conv_block3v2(X,3,[64,64,256],s=1)
-    for i in range(2):
-    X = identity_block3v2(X,3,[64,64,256])
-
-    X = conv_block3v2(X,3,[128,128,512],s=2)
-    for i in range(3):
-        X = identity_block3v2(X,3,[128,128,512])
-    
-    X = conv_block3v2(X,3,[256,256,1024],s=2)
-    for i in range(5):
-        X = identity_block3v2(X,3,[256,256,1024])
-    
-    X = conv_block3v2(X,3,[512,512,2048],s=2)
-    for i in range(2):
-        X = identity_block3v2(X,3,[512,512,2048])
-    
-    X = AveragePooling2D((2,2),strides=(1,1))(X)
-    X = Flatten()(X)
-    X = Dense(classes,activation='softmax')(X)
-
-    model = Model(inputs=X_input,outputs=X,name='ResNet50v2')
-
-    return model
-
-def resnet101v1(input_shape,classes):
-    X_input = Input(shape=input_shape)
-
-    X = ZeroPadding2D((3,3))(X_input)
-    X = Conv2D(64,(7,7),strides=(2,2))(X)
-    X = BatchNormalization()(X)
-    X = Activation('relu')(X)
-    X = MaxPooling2D((3,3),strides=(2,2))(X)
-
-    X = conv_block3v1(X,3,[64,64,256],s=1)
-    for i in range(2):
-    X = identity_block3v1(X,3,[64,64,256])
-
-    X = conv_block3v1(X,3,[128,128,512],s=2)
-    for i in range(3):
-        X = identity_block3v1(X,3,[128,128,512])
-    
-    X = conv_block3v1(X,3,[256,256,1024],s=2)
-    for i in range(22):
-        X = identity_block3v1(X,3,[256,256,1024])
-    
-    X = conv_block3v1(X,3,[512,512,2048],s=2)
-    for i in range(2):
-        X = identity_block3v1(X,3,[512,512,2048])
-    
-    X = AveragePooling2D((2,2),strides=(1,1))(X)
-    X = Flatten()(X)
-    X = Dense(classes,activation='softmax')(X)
-
-    model = Model(inputs=X_input,outputs=X,name='ResNet101v1')
-
-    return model
-
-def resnet101v2(input_shape,classes):
-    X_input = Input(shape=input_shape)
-
-    X = ZeroPadding2D((3,3))(X_input)
-    X = Conv2D(64,(7,7),strides=(2,2))(X)
-    X = BatchNormalization()(X)
-    X = Activation('relu')(X)
-    X = MaxPooling2D((3,3),strides=(2,2))(X)
-
-    X = conv_block3v2(X,3,[64,64,256],s=1)
-    for i in range(2):
-    X = identity_block3v2(X,3,[64,64,256])
-
-    X = conv_block3v2(X,3,[128,128,512],s=2)
-    for i in range(3):
-        X = identity_block3v2(X,3,[128,128,512])
-    
-    X = conv_block3v2(X,3,[256,256,1024],s=2)
-    for i in range(5):
-        X = identity_block3v2(X,3,[256,256,1024])
-    
-    X = conv_block3v2(X,3,[512,512,2048],s=2)
-    for i in range(2):
-        X = identity_block3v2(X,3,[512,512,2048])
-    
-    X = AveragePooling2D((2,2),strides=(1,1))(X)
-    X = Flatten()(X)
-    X = Dense(classes,activation='softmax')(X)
-
-    model = Model(inputs=X_input,outputs=X,name='ResNet101v2')
-
-    return model
-
-def resnet152v1(input_shape,classes):
-    X_input = Input(shape=input_shape)
-
-    X = ZeroPadding2D((3,3))(X_input)
-    X = Conv2D(64,(7,7),strides=(2,2))(X)
-    X = BatchNormalization()(X)
-    X = Activation('relu')(X)
-    X = MaxPooling2D((3,3),strides=(2,2))(X)
-
-    X = conv_block3v1(X,3,[64,64,256],s=1)
-    for i in range(2):
-    X = identity_block3v1(X,3,[64,64,256])
-
-    X = conv_block3v1(X,3,[128,128,512],s=2)
-    for i in range(7):
-        X = identity_block3v1(X,3,[128,128,512])
-    
-    X = conv_block3v1(X,3,[256,256,1024],s=2)
-    for i in range(35):
-        X = identity_block3v1(X,3,[256,256,1024])
-    
-    X = conv_block3v1(X,3,[512,512,2048],s=2)
-    for i in range(2):
-        X = identity_block3v1(X,3,[512,512,2048])
-    
-    X = AveragePooling2D((2,2),strides=(1,1))(X)
-    X = Flatten()(X)
-    X = Dense(classes,activation='softmax')(X)
-
-    model = Model(inputs=X_input,outputs=X,name='ResNet152v1')
-
-    return model
-
-def resnet152v2(input_shape,classes):
-    X_input = Input(shape=input_shape)
-
-    X = ZeroPadding2D((3,3))(X_input)
-    X = Conv2D(64,(7,7),strides=(2,2))(X)
-    X = BatchNormalization()(X)
-    X = Activation('relu')(X)
-    X = MaxPooling2D((3,3),strides=(2,2))(X)
-
-    X = conv_block3v2(X,3,[64,64,256],s=1)
-    for i in range(2):
-    X = identity_block3v2(X,3,[64,64,256])
-
-    X = conv_block3v2(X,3,[128,128,512],s=2)
-    for i in range(7):
-        X = identity_block3v2(X,3,[128,128,512])
-    
-    X = conv_block3v2(X,3,[256,256,1024],s=2)
-    for i in range(35):
-        X = identity_block3v2(X,3,[256,256,1024])
-    
-    X = conv_block3v2(X,3,[512,512,2048],s=2)
-    for i in range(2):
-        X = identity_block3v2(X,3,[512,512,2048])
-    
-    X = AveragePooling2D((2,2),strides=(1,1))(X)
-    X = Flatten()(X)
-    X = Dense(classes,activation='softmax')(X)
-
-    model = Model(inputs=X_input,outputs=X,name='ResNet152v2')
-
-    return model
+    return resnet(stack_fn,input_shape,'ResNet152v2',classes,include_top,preact=True)
