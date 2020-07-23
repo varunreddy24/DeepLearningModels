@@ -1,5 +1,4 @@
 import tensorflow as tf
-import tensorflow.keras as keras
 from tensorflow.keras.layers import Conv2D, Activation, Dense, Input, MaxPooling2D
 from tensorflow.keras.layers import MaxPooling2D, Add, ZeroPadding2D, BatchNormalization
 from tensorflow.keras.layers import ZeroPadding2D,GlobalAveragePooling2D
